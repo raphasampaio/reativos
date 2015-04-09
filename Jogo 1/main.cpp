@@ -7,8 +7,13 @@
 #define WIDTH 640
 #define PLAYER_SIZE 50
 #define BULLET_SIZE 25
-#define BRICK_SIZE WIDTH / 16
-#define MOVEMENT 1
+#define BRICK_SIZE 63
+#define PADDING 1
+#define MOVEMENT_BULLET 2
+#define MOVEMENT_BRICK 1
+
+std::vector<SDL_Rect> shots;
+std::vector<SDL_Rect> bricks;
 
 bool is_inside(SDL_Rect r, int x, int y)
 {
@@ -16,6 +21,53 @@ bool is_inside(SDL_Rect r, int x, int y)
         return true;
     else
         return false;
+}
+
+Uint32 update_position(Uint32 interval, void *param)
+{
+    auto it_shots = shots.begin();
+    while (it_shots != shots.end())
+    {
+        (*it_shots).y -= MOVEMENT_BULLET;
+
+        if ((*it_shots).y < 0)
+            it_shots = shots.erase(it_shots);
+        else
+            ++it_shots;
+    }
+
+    for (int i = 0; i < bricks.size(); i++)
+    {
+        bricks[i].x += MOVEMENT_BRICK;
+
+        if (bricks[i].x > WIDTH)
+            bricks[i].x = 0 - BRICK_SIZE;
+    }
+
+    bool stop = false;
+    it_shots = shots.begin();
+    while (it_shots != shots.end())
+    {
+        auto it_bricks = bricks.begin();
+        while (it_bricks != bricks.end())
+        {
+            if (is_inside((*it_bricks), (*it_shots).x, (*it_shots).y))
+            {
+                it_bricks = bricks.erase(it_bricks);
+                it_shots = shots.erase(it_shots);
+                stop = true;
+                break;
+            }
+            else
+                it_bricks++;
+        }
+        if (stop)
+            break;
+        else
+            it_shots++;
+    }
+
+    return(interval);
 }
 
 int main(int argc, char* args[])
@@ -30,15 +82,15 @@ int main(int argc, char* args[])
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
     assert(renderer != NULL);
 
+    Uint32 delay = 10;
+    SDL_TimerID my_timer_id = SDL_AddTimer(delay, update_position, NULL);
+
     /* EXECUTION */
     SDL_Rect player = { WIDTH * 1 / 2, HEIGHT - PLAYER_SIZE, PLAYER_SIZE, PLAYER_SIZE };
     SDL_Event event;
 
-    std::vector<SDL_Rect> shots;
-    std::vector<SDL_Rect> bricks;
-
-    for (size_t i = 0; i < WIDTH; i += BRICK_SIZE)
-        for (size_t j = 0; j < 3 * BRICK_SIZE; j += BRICK_SIZE)
+    for (size_t i = 0; i < WIDTH + BRICK_SIZE; i += BRICK_SIZE + PADDING)
+        for (size_t j = 0; j < 2 * BRICK_SIZE; j += BRICK_SIZE)
             bricks.insert(bricks.end(), { i, j, BRICK_SIZE, BRICK_SIZE });
 
     while (1)
@@ -86,40 +138,6 @@ int main(int argc, char* args[])
         }
 
         SDL_RenderPresent(renderer);
-
-        auto it = shots.begin();
-        while (it != shots.end()) 
-        {
-            (*it).y -= MOVEMENT;
-
-            if ((*it).y < 0)
-                it = shots.erase(it);
-            else
-                ++it;
-        }
-
-        bool stop = false;
-        auto it_shots = shots.begin();
-        while (it_shots != shots.end())
-        {
-            auto it_bricks = bricks.begin();
-            while (it_bricks != bricks.end())
-            {
-                if (is_inside((*it_bricks), (*it_shots).x, (*it_shots).y))
-                {
-                    it_bricks = bricks.erase(it_bricks);
-                    it_shots = shots.erase(it_shots);
-                    stop = true;
-                    break;
-                }
-                else
-                    it_bricks++;
-            }
-            if (stop)
-                break;
-            else
-                it_shots++;
-        }
     }
 
     /* FINALIZATION */
