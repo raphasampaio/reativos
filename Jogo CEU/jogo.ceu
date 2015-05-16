@@ -1,0 +1,235 @@
+#include "sdl.ceu"
+
+input void SDL_REDRAW;
+input void SDL_QUIT;
+input _SDL_KeyboardEvent*    SDL_KEYDOWN;
+
+var int win_w;
+var int win_h;
+var _SDL_Window&? win;
+    finalize
+        win = _SDL_CreateWindow("Jogo - Raphael Sampaio", _SDL_WINDOWPOS_CENTERED, _SDL_WINDOWPOS_CENTERED, 640, 480, _SDL_WINDOW_SHOWN);
+    with
+        _SDL_DestroyWindow(&win);
+    end
+
+_SDL_GetWindowSize(win, &win_w, &win_h);
+
+var _SDL_Renderer&? ren;
+    finalize
+        ren = _SDL_CreateRenderer(win, -1, 0);
+    with
+        _SDL_DestroyRenderer(&ren);
+    end
+
+var _SDL_Rect bg;
+    bg.w = win_w;
+    bg.h = win_h;
+    bg.x = 0;
+    bg.y = 0;
+
+var _SDL_Color bg_clr;
+    bg_clr.r = 0x00;
+    bg_clr.g = 0x00;
+    bg_clr.b = 0x00;
+
+class Brick with
+    var _SDL_Rect rct;
+    var int dt;
+    var bool alive;    
+
+    var _SDL_Renderer&  ren;
+do
+    this.rct.w = 63;
+    this.rct.h = 63;
+    this.alive = true;
+
+    var _SDL_Color clr;
+        clr.r = 0xFF;
+        clr.g = 0xFF;
+        clr.b = 0xFF;
+
+    par/or do
+        loop do
+            await (this.dt) ms;
+            rct.x = rct.x + 1;
+            if rct.x > 704 then
+                rct.x = -64;
+            end
+            if not alive then
+                break;
+            end
+        end
+    with
+        loop do
+            await SDL_REDRAW;
+            _SDL_SetRenderDrawColor(&ren, clr.r, clr.g, clr.b, 0xFF);
+            _SDL_RenderFillRect(&ren, &rct);
+        end
+    end
+end
+
+class Shot with
+    var _SDL_Rect rct;
+    var int dt;
+    var bool alive;
+
+    var _SDL_Renderer&  ren;
+do
+    this.rct.w = 25;
+    this.rct.h = 25;
+    this.alive = true;
+
+    var _SDL_Color clr;
+        clr.r = 0xFF;
+        clr.g = 0xFF;
+        clr.b = 0xFF;
+
+    par/or do
+        loop do
+            await (this.dt) ms;
+            rct.y = rct.y - 10;
+            if rct.y < 0 then
+                alive = false;
+            end
+            if not alive then
+                break;
+            end
+        end
+    with
+        loop do
+            await SDL_REDRAW;
+            _SDL_SetRenderDrawColor(&ren, clr.r, clr.g, clr.b, 0xFF);
+            _SDL_RenderFillRect(&ren, &rct);
+        end
+    end
+end
+
+class Player with
+    var _SDL_Rect rct;
+    var int dt;
+    var bool right;
+    var bool left;
+    pool Shot[] shots;
+    pool Brick[] bricks;
+
+    var _SDL_Renderer& ren;
+do
+    this.rct.w = 64;
+    this.rct.h = 64;
+    this.right = false;
+    this.left = false;
+
+    loop j in 2 do
+        loop i in 12 do
+            spawn Brick in bricks with
+                this.dt = 20;
+                this.rct.x = i * 64;
+                this.rct.y = j * 64;
+                this.ren = ren;
+            end;
+        end
+    end
+
+    var _SDL_Color clr;
+        clr.r = 0xFF;
+        clr.g = 0xFF;
+        clr.b = 0xFF;
+
+    par/or do
+        loop do
+            await (this.dt) ms;
+            if right then
+                rct.x = rct.x + 15;
+                right = false;
+            end
+           if left then
+                rct.x = rct.x - 15;
+                left = false;
+            end
+        end
+    with
+        loop do
+            loop (Shot *)s in shots do
+                if s:alive then
+                    loop (Brick *)b in bricks do
+                        if b:alive then
+                            if _SDL_HasIntersection(&s:rct, &b:rct) then
+                                s:alive = false;
+                                b:alive = false;
+                            end
+                        end
+                    end
+                end
+            end
+            await 1ms;
+        end
+
+    with
+        loop do
+            await SDL_REDRAW;
+            _SDL_SetRenderDrawColor(&ren, clr.r, clr.g, clr.b, 0xFF);
+            _SDL_RenderFillRect(&ren, &rct);
+        end
+    with
+        loop do
+            var _SDL_KeyboardEvent* key = await SDL_KEYDOWN;
+            if key:keysym.sym == _SDLK_LEFT then
+                this.left = true;
+            end
+            if key:keysym.sym == _SDLK_RIGHT then
+                this.right = true;
+            end                         
+        end
+    with
+        loop do
+            var _SDL_KeyboardEvent* key = await SDL_KEYDOWN;
+            if key:keysym.sym == _SDLK_UP then
+                spawn Shot in shots with
+                    this.dt = 10;
+                    this.rct.x = rct.x + (32 - 12);
+                    this.rct.y = rct.y;
+                    this.ren = ren;
+                end;
+            await 500 ms;    
+            end              
+        end        
+    end
+end
+
+par/or do
+    await SDL_QUIT;
+with
+    loop do
+        par/or do
+            loop do
+                var _SDL_KeyboardEvent* key = await SDL_KEYDOWN;
+                if key:keysym.sym == _SDLK_r then
+                    break;
+                end            
+            end
+        with
+            loop do
+                await SDL_REDRAW;
+                _SDL_SetRenderDrawColor(&ren, bg_clr.r, bg_clr.g, bg_clr.b, 0xFF);
+                _SDL_RenderFillRect(&ren, &bg);
+            end
+        with
+            var Player player with
+                this.rct.x = 320 - 32;
+                this.rct.y = 480 - 64;
+                this.ren = ren;
+                this.dt = 10;
+            end;
+
+            await FOREVER;
+        with
+            loop do
+                await SDL_REDRAW;
+                _SDL_RenderPresent(&ren);
+            end
+        end
+    end
+end
+
+escape 0;
